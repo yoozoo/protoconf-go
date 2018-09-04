@@ -25,7 +25,7 @@ func NewConfigurationReader(r KVReader) *ConfigurationReader {
 }
 
 //Config read value needed by the configuration object
-func (p *ConfigurationReader) Config(data Configuration) bool {
+func (p *ConfigurationReader) Config(data Configuration) error {
 	appName := data.GetApplicationName()
 	keys := data.GetValidKeys()
 	kv := p.reader.GetValues(appName, keys)
@@ -35,13 +35,14 @@ func (p *ConfigurationReader) Config(data Configuration) bool {
 			v = &defValue
 		}
 		if v == nil {
-			panic(fmt.Errorf("No value for %s is found", k))
+			return fmt.Errorf("No value for %s is found", k)
 		}
-		if !data.SetValue(k, *v) {
-			panic(fmt.Errorf("Invalid value %s for %s is found", *v, k))
+		err := data.SetValue(k, *v)
+		if err != nil {
+			return fmt.Errorf("Invalid value %s for %s is found : %s", *v, k, err)
 		}
 	}
-	return true
+	return nil
 }
 
 //WatchKeys watch specified keys

@@ -1,9 +1,11 @@
 package protoconf_go
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/coreos/etcd/clientv3"
 )
@@ -17,6 +19,8 @@ const (
 	endpointsEnvKey = "etcd_endpoints"
 	userpassEnvKey  = "etcd_user"
 	envEnvKey       = "etcd_envkey"
+
+	dialTimeout = 2 * time.Second
 )
 
 // EtcdReader etcd reader
@@ -48,7 +52,7 @@ func NewEtcdReader(env string, user string, pass string, endpoints []string) *Et
 		}
 	}
 	if len(env) == 0 {
-		s := os.Getenv(etcd_envkey)
+		s := os.Getenv(envEnvKey)
 		if len(s) > 0 {
 			env = s
 		}
@@ -78,23 +82,86 @@ func NewEtcdReader(env string, user string, pass string, endpoints []string) *Et
 	cli, err := clientv3.New(clientv3.Config{
 		DialTimeout: dialTimeout,
 		Endpoints:   endpoints,
-		Username:    username,
-		Password:    password,
+		Username:    user,
+		Password:    pass,
 	})
+
 	if err != nil {
 		panic(err)
 	}
-
 	result.client = cli
-	return cli
+	return result
 }
 
 //GetValues get values of the key list
 func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string {
 
+	prefix := "/" + p.env + "/" + appName + "/"
+	result := make(map[string]*string)
+
+	txn := p.client.Txn(context.TODO())
+	for _, k := range keys {
+		txn = txn.Then(clientv3.OpGet(prefix + k))
+		result[k] = nil
+	}
+
+	txnResp, err := txn.Commit()
+
+	if err != nil {
+		fmt.Println("error to retrieve config values: ", err)
+		return result
+	}
+
+	if !txnResp.Succeeded {
+		fmt.Println("Failed to retrieve config values")
+
+	}
+	resp := txnResp.OpResponse().Get()
+	for _, kv := range resp.Kvs {
+		v := string(kv.Value)
+		result[strings.TrimPrefix(prefix, string(kv.Key))] = &v
+	}
+
+	return result
+
 }
 
 //WatchApp watch keys of the app
 func (p *EtcdReader) WatchApp(appName string, callback func(k string, v string)) {
+	go p.watchingApp(appName, callback)
+}
+func (p *EtcdReader) watchingApp(appName string, callback func(k string, v string)) {
+	prefix := "/" + p.env + "/" + appName + "/"
+RESTART_POINT:
+	for {
+		ch := p.client.Watch(context.Background(), prefix, clientv3.WithPrefix())
 
+		for {
+			select {
+			case s, ok := <-ch:
+				if ok {
+					if len(s.Events) > 0 {
+						cache := make(map[string]string)
+						for _, e := range s.Events {
+							cache[strings.TrimPrefix(string(e.Kv.Key), prefix)] = string(e.Kv.Value)
+						}
+						for k, v := range cache {
+							callback(k, v)
+						}
+					}
+					if s.Canceled {
+						err := s.Err()
+						if err != nil {
+							fmt.Println("error :", err)
+						}
+						break RESTART_POINT
+					}
+				} else {
+					fmt.Println("channel closed.")
+					break RESTART_POINT
+				}
+			}
+		}
+
+	}
 }

@@ -100,11 +100,13 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 	result := make(map[string]*string)
 
 	txn := p.client.Txn(context.TODO())
+	var ops []clientv3.Op
 	for _, k := range keys {
-		txn = txn.Then(clientv3.OpGet(prefix + k))
+		ops = append(ops, clientv3.OpGet(prefix+k))
+
 		result[k] = nil
 	}
-
+	txn = txn.Then(ops...)
 	txnResp, err := txn.Commit()
 
 	if err != nil {
@@ -116,10 +118,14 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 		fmt.Println("Failed to retrieve config values")
 
 	}
-	resp := txnResp.OpResponse().Get()
-	for _, kv := range resp.Kvs {
-		v := string(kv.Value)
-		result[strings.TrimPrefix(prefix, string(kv.Key))] = &v
+	for _, resp := range txnResp.Responses {
+		r := resp.GetResponseRange()
+		if r != nil {
+			for _, kv := range r.Kvs {
+				v := string(kv.Value)
+				result[strings.TrimPrefix(string(kv.Key), prefix)] = &v
+			}
+		}
 	}
 
 	return result

@@ -9,7 +9,7 @@ type Configuration interface {
 	//set values inside the java config class
 	SetValue(key string, value string) error
 	//get default values from the java config class
-	GetDefaultValue(key string) string
+	GetDefaultValue(key string) *string
 	// add key change to the change list
 	NotifyValueChange(key string, newValue string)
 }

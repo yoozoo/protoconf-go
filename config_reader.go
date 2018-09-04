@@ -31,8 +31,7 @@ func (p *ConfigurationReader) Config(data Configuration) error {
 	kv := p.reader.GetValues(appName, keys)
 	for k, v := range kv {
 		if v == nil {
-			defValue := data.GetDefaultValue(k)
-			v = &defValue
+			v = data.GetDefaultValue(k)
 		}
 		if v == nil {
 			return fmt.Errorf("No value for %s is found", k)

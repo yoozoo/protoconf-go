@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/yoozoo/protoconf_go/agentApplicationService"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 const (
-	defaultEndpoints = "192.168.115.57:2379"
-	defaultUsername  = "root"
-	defaultPassword  = "root"
-	defaultEnv       = "default"
+	defaultEnv = "default"
 
 	endpointsEnvKey = "etcd_endpoints"
 	userpassEnvKey  = "etcd_user"
@@ -30,67 +30,80 @@ type EtcdReader struct {
 	user      string
 	pass      string
 	env       string
+	appToken  string
+}
+
+//SetUser set etcd user/pass
+func (p *EtcdReader) SetUser(user string, pass string) {
+	p.user = user
+	p.pass = pass
+}
+
+//SetEndpoints set etcd endpionts
+func (p *EtcdReader) SetEndpoints(endpoints []string) {
+	p.endpoints = endpoints
+}
+
+//SetToken set proto agent token
+func (p *EtcdReader) SetToken(token string) {
+	p.appToken = token
 }
 
 //NewEtcdReader create etcd reader
-func NewEtcdReader(env string, user string, pass string, endpoints []string) *EtcdReader {
-	if len(endpoints) == 0 {
-		s := os.Getenv(endpointsEnvKey)
-		if len(s) > 0 {
-			endpoints = strings.Split(s, ",")
-		} else {
-			fmt.Println("invalid env value for endpoint:", os.Getenv(s))
-		}
+func NewEtcdReader(env string) *EtcdReader {
+	s := os.Getenv(endpointsEnvKey)
+	var result EtcdReader
+	if len(s) > 0 {
+		result.endpoints = strings.Split(s, ",")
 	}
-	if len(user) == 0 || len(pass) == 0 {
-		s := strings.Split(os.Getenv(userpassEnvKey), ":")
-		if len(s) == 2 && len(s[0]) > 0 && len(s[1]) > 0 {
-			user = s[0]
-			pass = s[1]
-		} else {
-			fmt.Println("invalid env value for user/pass:", os.Getenv(userpassEnvKey))
-		}
+	userpass := strings.Split(os.Getenv(userpassEnvKey), ":")
+	if len(userpass) == 2 && len(userpass[0]) > 0 && len(userpass[1]) > 0 {
+		result.user = userpass[0]
+		result.pass = userpass[1]
 	}
+	result.env = env
 	if len(env) == 0 {
-		s := os.Getenv(envEnvKey)
+		s = os.Getenv(envEnvKey)
 		if len(s) > 0 {
-			env = s
+			result.env = s
+		} else {
+			panic(fmt.Errorf("env value is empty"))
 		}
 	}
+	return &result
+}
+func (p *EtcdReader) getClient(appName string) *clientv3.Client {
 	// todo add protoagent support
+	if p.client != nil {
+		return p.client
+	}
 
-	if len(endpoints) == 0 {
+	if len(p.endpoints) == 0 || len(p.user) == 0 || len(p.pass) == 0 {
+		p.getSettingFromAgent(appName)
+	}
+
+	if len(p.endpoints) == 0 {
 		panic(fmt.Errorf("empty etcd endpoints"))
 	}
-	if len(user) == 0 {
+	if len(p.user) == 0 {
 		panic(fmt.Errorf("empty username"))
 	}
-	if len(pass) == 0 {
+	if len(p.pass) == 0 {
 		panic(fmt.Errorf("empty password"))
-	}
-	if len(env) == 0 {
-		panic(fmt.Errorf("empty envkey"))
-	}
-
-	result := &EtcdReader{
-		endpoints: endpoints,
-		user:      user,
-		pass:      pass,
-		env:       env,
 	}
 
 	cli, err := clientv3.New(clientv3.Config{
 		DialTimeout: dialTimeout,
-		Endpoints:   endpoints,
-		Username:    user,
-		Password:    pass,
+		Endpoints:   p.endpoints,
+		Username:    p.user,
+		Password:    p.pass,
 	})
 
 	if err != nil {
 		panic(err)
 	}
-	result.client = cli
-	return result
+	p.client = cli
+	return cli
 }
 
 //GetValues get values of the key list
@@ -99,15 +112,19 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 	prefix := "/" + p.env + "/" + appName + "/"
 	result := make(map[string]*string)
 
-	txn := p.client.Txn(context.TODO())
 	var ops []clientv3.Op
 	for _, k := range keys {
 		ops = append(ops, clientv3.OpGet(prefix+k))
 
 		result[k] = nil
 	}
-	txn = txn.Then(ops...)
-	txnResp, err := txn.Commit()
+	cli := p.getClient(appName)
+	if cli == nil {
+		fmt.Println("Failed to get etcd client connection")
+		return result
+	}
+
+	txnResp, err := cli.Txn(context.TODO()).Then(ops...).Commit()
 
 	if err != nil {
 		fmt.Println("error to retrieve config values: ", err)
@@ -170,4 +187,40 @@ RESTART_POINT:
 		}
 
 	}
+}
+
+func (p *EtcdReader) getSettingFromAgent(appName string) {
+
+	if len(p.appToken) == 0 {
+		return
+	}
+	agentaddr := "127.0.0.1:57581"
+	agentConn, err := grpc.Dial(agentaddr, grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+	defer agentConn.Close()
+
+	c := agentApplicationService.NewAgentApplicationServiceClient(agentConn)
+	req := &agentApplicationService.LogonInfoRequest{
+		AppToken: p.appToken,
+		Env:      p.env,
+	}
+	resp, err := c.GetLogonInfo(context.TODO(), req)
+	if err != nil {
+		st := status.Convert(err)
+		for _, t := range st.Details() {
+			switch t := t.(type) {
+			case *agentApplicationService.LogonError:
+				fmt.Println(t.Detail)
+			}
+		}
+	}
+
+	if resp.AppName != appName {
+		panic(fmt.Errorf("protoagent response app name is %s which is different from our app %s", resp.AppName, appName))
+	}
+	p.endpoints = strings.Split(resp.Endpoints, ",")
+	p.user = resp.User
+	p.pass = resp.Password
 }

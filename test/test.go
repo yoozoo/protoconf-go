@@ -8,7 +8,10 @@ import (
 )
 
 func main() {
-	etcd := protoconf.NewEtcdReader("default", "root", "root", []string{"192.168.115.57:2379"})
+	etcd := protoconf.NewEtcdReader("default")
+	etcd.SetUser("root", "root")
+	etcd.SetEndpoints([]string{"192.168.115.57:2379"})
+
 	reader := protoconf.NewConfigurationReader(etcd)
 	var t ConfigurationTest
 	reader.Config(&t)

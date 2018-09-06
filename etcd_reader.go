@@ -67,7 +67,7 @@ func NewEtcdReader(env string) *EtcdReader {
 		if len(s) > 0 {
 			result.env = s
 		} else {
-			panic(fmt.Errorf("env value is empty"))
+			result.env = defaultEnv
 		}
 	}
 	return &result

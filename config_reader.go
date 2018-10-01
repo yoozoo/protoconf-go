@@ -1,4 +1,4 @@
-package protoconf_go
+package protoconf
 
 import (
 	"fmt"
@@ -26,12 +26,12 @@ func NewConfigurationReader(r KVReader) *ConfigurationReader {
 
 //Config read value needed by the configuration object
 func (p *ConfigurationReader) Config(data Configuration) error {
-	appName := data.GetApplicationName()
-	keys := data.GetValidKeys()
+	appName := data.ApplicationName()
+	keys := data.ValidKeys()
 	kv := p.reader.GetValues(appName, keys)
 	for k, v := range kv {
 		if v == nil {
-			v = data.GetDefaultValue(k)
+			v = data.DefaultValue(k)
 		}
 		if v == nil {
 			return fmt.Errorf("No value for %s is found", k)
@@ -46,5 +46,5 @@ func (p *ConfigurationReader) Config(data Configuration) error {
 
 //WatchKeys watch specified keys
 func (p *ConfigurationReader) WatchKeys(data Configuration) {
-	p.reader.WatchApp(data.GetApplicationName(), data.NotifyValueChange)
+	p.reader.WatchApp(data.ApplicationName(), data.NotifyValueChange)
 }

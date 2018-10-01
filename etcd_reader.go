@@ -1,4 +1,4 @@
-package protoconf_go
+package protoconf
 
 import (
 	"context"
@@ -215,6 +215,7 @@ func (p *EtcdReader) getSettingFromAgent(appName string) {
 				fmt.Println(t.Detail)
 			}
 		}
+		return
 	}
 
 	if resp.AppName != appName {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	protoconf "github.com/yoozoo/protoconf_go"
+	"github.com/yoozoo/protoconf_go"
 )
 
 func main() {
@@ -24,13 +24,13 @@ func main() {
 type ConfigurationTest struct {
 }
 
-//GetApplicationName retrieve application name
-func (p *ConfigurationTest) GetApplicationName() string {
+//ApplicationName retrieve application name
+func (p *ConfigurationTest) ApplicationName() string {
 	return "服务1"
 }
 
-//GetValidKeys retrieve all keys
-func (p *ConfigurationTest) GetValidKeys() []string {
+//ValidKeys retrieve all keys
+func (p *ConfigurationTest) ValidKeys() []string {
 	return []string{"msg/name", "msg/def", "msg/id", "name"}
 }
 
@@ -40,8 +40,8 @@ func (p *ConfigurationTest) SetValue(key string, value string) error {
 	return nil
 }
 
-//GetDefaultValue get default values from the java config class
-func (p *ConfigurationTest) GetDefaultValue(key string) *string {
+//DefaultValue get default values from the java config class
+func (p *ConfigurationTest) DefaultValue(key string) *string {
 	fmt.Println("Getting default value of key ", key)
 	v := ""
 	return &v

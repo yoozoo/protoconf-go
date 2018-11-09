@@ -112,10 +112,7 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 	prefix := "/" + p.env + "/" + appName + "/"
 	result := make(map[string]*string)
 
-	var ops []clientv3.Op
 	for _, k := range keys {
-		ops = append(ops, clientv3.OpGet(prefix+k))
-
 		result[k] = nil
 	}
 	cli := p.getClient(appName)
@@ -124,25 +121,15 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 		return result
 	}
 
-	txnResp, err := cli.Txn(context.TODO()).Then(ops...).Commit()
-
+	resp, err :=cli.Get(context.TODO(), prefix, clientv3.WithPrefix())
 	if err != nil {
 		fmt.Println("error to retrieve config values: ", err)
 		return result
 	}
 
-	if !txnResp.Succeeded {
-		fmt.Println("Failed to retrieve config values")
-
-	}
-	for _, resp := range txnResp.Responses {
-		r := resp.GetResponseRange()
-		if r != nil {
-			for _, kv := range r.Kvs {
-				v := string(kv.Value)
-				result[strings.TrimPrefix(string(kv.Key), prefix)] = &v
-			}
-		}
+	for _, kv := range resp.Kvs {
+		v := string(kv.Value)
+		result[strings.TrimPrefix(string(kv.Key), prefix)] = &v
 	}
 
 	return result

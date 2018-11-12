@@ -129,7 +129,10 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 
 	for _, kv := range resp.Kvs {
 		v := string(kv.Value)
-		result[strings.TrimPrefix(string(kv.Key), prefix)] = &v
+		key := strings.TrimPrefix(string(kv.Key), prefix)
+		if _, ok := result[key]; ok {
+			result[key] = &v
+		}
 	}
 
 	return result

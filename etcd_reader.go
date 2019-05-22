@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/yoozoo/protoconf_go/agentApplicationService"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
@@ -107,21 +108,18 @@ func (p *EtcdReader) getClient(appName string) *clientv3.Client {
 }
 
 //GetValues get values of the key list
-func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string {
+func (p *EtcdReader) GetValues(appName string) map[string]string {
 
 	prefix := "/" + p.env + "/" + appName + "/"
-	result := make(map[string]*string)
+	result := make(map[string]string)
 
-	for _, k := range keys {
-		result[k] = nil
-	}
 	cli := p.getClient(appName)
 	if cli == nil {
 		fmt.Println("Failed to get etcd client connection")
 		return result
 	}
 
-	resp, err :=cli.Get(context.TODO(), prefix, clientv3.WithPrefix())
+	resp, err := cli.Get(context.TODO(), prefix, clientv3.WithPrefix())
 	if err != nil {
 		fmt.Println("error to retrieve config values: ", err)
 		return result
@@ -130,9 +128,7 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 	for _, kv := range resp.Kvs {
 		v := string(kv.Value)
 		key := strings.TrimPrefix(string(kv.Key), prefix)
-		if _, ok := result[key]; ok {
-			result[key] = &v
-		}
+		result[key] = v
 	}
 
 	return result
@@ -140,10 +136,10 @@ func (p *EtcdReader) GetValues(appName string, keys []string) map[string]*string
 }
 
 //WatchApp watch keys of the app
-func (p *EtcdReader) WatchApp(appName string, callback func(k string, v string)) {
+func (p *EtcdReader) WatchApp(appName string, callback NotifyInterface) {
 	go p.watchingApp(appName, callback)
 }
-func (p *EtcdReader) watchingApp(appName string, callback func(k string, v string)) {
+func (p *EtcdReader) watchingApp(appName string, callback NotifyInterface) {
 	prefix := "/" + p.env + "/" + appName + "/"
 RESTART_POINT:
 	for {
@@ -154,12 +150,18 @@ RESTART_POINT:
 			case s, ok := <-ch:
 				if ok {
 					if len(s.Events) > 0 {
-						cache := make(map[string]string)
+						cache := make(map[string]*clientv3.Event)
 						for _, e := range s.Events {
-							cache[strings.TrimPrefix(string(e.Kv.Key), prefix)] = string(e.Kv.Value)
+							cache[strings.TrimPrefix(string(e.Kv.Key), prefix)] = e
 						}
-						for k, v := range cache {
-							callback(k, v)
+						for k, e := range cache {
+							if e.Type == mvccpb.DELETE {
+								callback.DeleteKey(k)
+							} else if e.IsCreate() {
+								callback.AddKey(k, string(e.Kv.Value))
+							} else {
+								callback.UpdateKey(k, string(e.Kv.Value))
+							}
 						}
 					}
 					if s.Canceled {

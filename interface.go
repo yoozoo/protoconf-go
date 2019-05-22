@@ -1,5 +1,9 @@
 package protoconf
 
+const (
+	mapKeyPlaceHolder = "MAP_ENTRY"
+)
+
 // Configuration protoconf configuration object interface
 type Configuration interface {
 	//retrieve application name
@@ -12,4 +16,18 @@ type Configuration interface {
 	DefaultValue(key string) *string
 	// add key change to the change list
 	NotifyValueChange(key string, newValue string)
+}
+
+// MapConfiguration map related func
+type MapConfiguration interface {
+	//delete the related object
+	DeleteKey(key string)
+}
+
+// DeleteKey delete related map object
+func DeleteKey(cfg Configuration, key string) {
+	//check if has delete key interface
+	if withOptions, ok := cfg.(MapConfiguration); ok {
+		withOptions.DeleteKey(key)
+	}
 }

@@ -171,19 +171,24 @@ type notifycationObject struct {
 }
 
 func (p *notifycationObject) AddKey(k string, v string) {
-	if _, ok := p.cfgs.keys[k]; ok {
-		p.data.NotifyValueChange(k, v)
-	} else {
-		prefix, _ := getMapKey(k, p.cfgs)
-		if len(prefix) > 0 {
-			p.data.NotifyValueChange(k, v)
-		}
-	}
+	p.UpdateKey(k, v)
 }
 func (p *notifycationObject) UpdateKey(k string, v string) {
+	if _, ok := p.cfgs.keys[k]; !ok {
+		prefix, _ := getMapKey(k, p.cfgs)
+		if len(prefix) == 0 {
+			return
+		}
+	}
 	p.data.NotifyValueChange(k, v)
 }
 func (p *notifycationObject) DeleteKey(k string) {
+	if _, ok := p.cfgs.keys[k]; !ok {
+		prefix, _ := getMapKey(k, p.cfgs)
+		if len(prefix) == 0 {
+			return
+		}
+	}
 	DeleteKey(p.data, k)
 }
 
